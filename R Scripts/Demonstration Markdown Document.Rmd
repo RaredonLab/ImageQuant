@@ -1,0 +1,405 @@
+---
+title: "Demonstration Markdown Document"
+author: "MSBR"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE, message=FALSE, fig.height=6, fig.width=8)
+```
+
+#### Introduction
+
+This document is a demonstration of how to use EBImage to quanitfy patterns in microscopy data, in particular from stiched, multi-channel, raw EVOS images, with each channel saved as a separate large stiched image. You will need the images themselves, the knowledge of which image is which color channel (since they are all greyscale), and the proteins or molecules represented in each channel. It will also be useful to know what combination of positive-markers and negative markers are of interest for you specific project and/or experiment.
+
+#### Set up the workspace with packages and home-made functions within what I am currently calling ImageQuant
+
+```{r,warning=FALSE}
+# Packages (what software do we need)
+require(EBImage)
+require(reshape2)
+require(ggplot2)
+require(Seurat)
+require(ggpubr)
+require(knitr)
+
+# Load local quantification functions (homemade functions that make this script run)
+source('/Users/msbr/GitHub/ImageQuant/R Functions/LoadImageChannels.R')
+source('/Users/msbr/GitHub/ImageQuant/R Functions/PreProcessImage.R')
+source('/Users/msbr/GitHub/ImageQuant/R Functions/QuantFunction.R')
+source('/Users/msbr/GitHub/ImageQuant/R Functions/QuantifyOneLabel.R')
+source('/Users/msbr/GitHub/ImageQuant/R Functions/ChunkIt.R')
+source('/Users/msbr/GitHub/ImageQuant/R Functions/MeltIntoDataframe.R')
+source('/Users/msbr/GitHub/ImageQuant/R Functions/NormalizeImages.R')
+```
+
+Great. Not we are ready to actually process some data. Let's use Satoshi's data comparing Sox9 media with matrigel additive to Sox9 media without matrigel additive.
+
+We will run the process, for each image to be analyzed, indepedently, and then combine the outputs later.
+
+Here, we load the Matrigel-negative condition:
+
+```{r}
+#### Matrigel - ####
+# Load image channels
+images.raw <- LoadImageChannels(channel.filepaths = 
+                    c("~/Library/CloudStorage/GoogleDrive-michasam.raredon@yale.edu/My Drive/Raredon_Lab_Administration/Lab Members/Satoshi/EVOS images_101323/BASC isolation#1_P0(P1)_SOX9m/101323_BASC isolation #1_P0(P1)_SOX9m_ABCA3.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d0.TIF",
+                      "~/Library/CloudStorage/GoogleDrive-michasam.raredon@yale.edu/My Drive/Raredon_Lab_Administration/Lab Members/Satoshi/EVOS images_101323/BASC isolation#1_P0(P1)_SOX9m/101323_BASC isolation #1_P0(P1)_SOX9m_ABCA3.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d1.TIF",
+                      "~/Library/CloudStorage/GoogleDrive-michasam.raredon@yale.edu/My Drive/Raredon_Lab_Administration/Lab Members/Satoshi/EVOS images_101323/BASC isolation#1_P0(P1)_SOX9m/101323_BASC isolation #1_P0(P1)_SOX9m_ABCA3.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d2.TIF",
+                      "~/Library/CloudStorage/GoogleDrive-michasam.raredon@yale.edu/My Drive/Raredon_Lab_Administration/Lab Members/Satoshi/EVOS images_101323/BASC isolation#1_P0(P1)_SOX9m/101323_BASC isolation #1_P0(P1)_SOX9m_ABCA3.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d3.TIF"),
+                    channel.names = 
+                      c('Abca3','DAPI','Vim','Sox9'))
+```
+
+We can inspect the image directly:
+
+```{r}
+display(images.raw$DAPI)
+```
+
+Can't see anything yet! That's because we need to normalize the data so that the signal shows up as a visible shade of white over a black backgroun:
+
+```{r}
+# Normalize each channel
+images.norm <- NormalizeImages(images.raw)
+display(images.norm$DAPI)
+display(images.norm$Sox9)
+```
+
+Great. Now we can see our images. But they have ranges of values, and we really would prefer binary values at some threshold. But how do we determine the right threshold? Here, we use a technique called 'adaptive thresholding', which comes built-in to EBImage. You should play around with the 'box.dim' and 'offset' parameters to get a picture that looks good for you! These settings should be standardized for any set of samples that will be compared to one another. 
+
+```{r}
+# PreProcess image channels
+images.processed <- PreProcessImage(images.norm = images.norm,
+                                    box.dim = 1000,
+                                    offset = 0.01) # These parameters will make a huge difference in your outputs and should be tuned + checked
+display(images.processed$DAPI)
+display(images.processed$Sox9)
+display(images.processed$Abca3)
+display(images.processed$Vim)
+```
+
+Excellent. Now we will bring all of the information from each channel together into one single dataframe, whih will allow us to perform logical operations on each row (pixel, in this case)
+
+```{r}
+# Melt into dataframe
+image.object <- MeltIntoDataframe(images.processed)
+```
+
+Next, we want to bin the data into chunks. Basicaly, take the big image and break it into little pieces, so that we can understand the statisical 'spread' of the outputs and get distributions as our end result. You should experiment with 'num.pixels.per.chunk' values to get a good number of output measurements that make sense to you and allow you to see a good amount of varince in your data without measuring millions of values.
+
+```{r}
+# Define number of pixels within each chunk
+num.pixels.per.chunk = 500000 # experiment with chunk size to yield a good number of samples
+num.pix <- nrow(image.object) # total number of pixels
+n.chunks <- floor(num.pix/num.pixels.per.chunk)
+message(paste(num.pixels.per.chunk,'pixels per chunk will yield',n.chunks,'total chunks'))
+```
+
+Once you are happy with the above values, we break our data into that many chunks, as follows:
+
+```{r}
+chunked.data <- ChunkIt(image.object = image.object,
+                        n.chunks = n.chunks)
+```
+
+Great! Next, we need to identify specific metrics we would like to evaluate.
+
+This means that we, as the user, need to DEFINE what we are asking to measure.
+
+Example: Let's say that we want to ask what fraction of these pixels are BASC-like. We need to tell the code how to identify BASC-like pixels, and what to compare these to within the image (because our output will be a ratio/percentage.) I think that a good definition of a BASC-like pixel is a pixel that is Sox9-positive, Abca3-positive, and Vimentin-negative. But I don't want to compare the representation of this pattern to ALL pixels. I want to compare this signature within the limited set of DAPI-positive signals. So, I might write the following:
+
+```{r}
+quick.demo <- QuantifyOneLabel(chunked.data,
+                 label.name = 'BASC-like Epithelium',
+                 base.criteria.positive = c('DAPI'),
+                 label.criteria.positive = c('Sox9','Abca3'),
+                 label.criteria.negative = c('Vim'))
+```
+
+But that only quantifies one thing! We would love to quantify multiple things at once and then combine all the results together for plotting. So we can stack these queries, as follows:
+
+```{r}
+# Build the entire dataset needed for plotting
+output.data <- data.frame('BASC-like Epithelium' = QuantifyOneLabel(chunked.data,
+                                                                    label.name = 'BASC-like Epithelium',
+                                                                    base.criteria.positive = c('DAPI'),
+                                                                    label.criteria.positive = c('Sox9','Abca3'),
+                                                                    label.criteria.negative = c('Vim')),
+                          'Tuft-like Epithelium' = QuantifyOneLabel(chunked.data,
+                                                                    label.name = 'Tuft-like Epithelium',
+                                                                    base.criteria.positive = c('DAPI'),
+                                                                    label.criteria.positive = c('Sox9'),
+                                                                    label.criteria.negative = c('Vim','Abca3')),
+                          'Sox9-Positive Epithelium' = QuantifyOneLabel(chunked.data,
+                                                                        label.name = 'Sox9-Positive Epithelium',
+                                                                        base.criteria.positive = c('DAPI'),
+                                                                        label.criteria.positive = c('Sox9'),
+                                                                        label.criteria.negative = c('Vim')),
+                          'Mesenchyme' = QuantifyOneLabel(chunked.data,
+                                                                 label.name = 'Mesenchyme',
+                                                                 base.criteria.positive = c('DAPI'),
+                                                                 label.criteria.positive = c('Vim'),
+                                                                 label.criteria.negative = c('Sox9','Abca3')),
+                          'Epi.Tuft-like' = QuantifyOneLabel(chunked.data,
+                                                          label.name = 'Mesenchyme',
+                                                          base.criteria.positive = c('DAPI'),
+                                                          base.criteria.negative = c('Vim'),
+                                                          label.criteria.positive = c('Sox9'),
+                                                          label.criteria.negative = c('Abca3')))
+# Label with condition
+output.data$Condition <- 'Matrigel-'
+
+# Stash so we don't overwrite
+data1 <- melt(output.data)
+```
+
+The object 'data1' now contains all the information that we requested from the Matrigel-negative image. We can take a direct loook at data1 by running the following code:
+
+```{r}
+#View(data1)
+kable(data1[1:50,])
+```
+
+Excellent. Looks good. Now, let's run exactly the same workflow for the Matrigel-positive condition:
+
+```{r}
+#### Matrigel + ####
+# Load image channels
+images.raw <- LoadImageChannels(channel.filepaths = 
+                                  c("~/Library/CloudStorage/GoogleDrive-michasam.raredon@yale.edu/My Drive/Raredon_Lab_Administration/Lab Members/Satoshi/EVOS images_101323/BASC isolation#1_P0(P1)_SOX9m+Matrigel/101323_BASC isolation #1_P0(P1)_SOX9m+Matrigel_ABCA3.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d0.TIF",
+                                    "~/Library/CloudStorage/GoogleDrive-michasam.raredon@yale.edu/My Drive/Raredon_Lab_Administration/Lab Members/Satoshi/EVOS images_101323/BASC isolation#1_P0(P1)_SOX9m+Matrigel/101323_BASC isolation #1_P0(P1)_SOX9m+Matrigel_ABCA3.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d1.TIF",
+                                    "~/Library/CloudStorage/GoogleDrive-michasam.raredon@yale.edu/My Drive/Raredon_Lab_Administration/Lab Members/Satoshi/EVOS images_101323/BASC isolation#1_P0(P1)_SOX9m+Matrigel/101323_BASC isolation #1_P0(P1)_SOX9m+Matrigel_ABCA3.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d2.TIF",
+                                    "~/Library/CloudStorage/GoogleDrive-michasam.raredon@yale.edu/My Drive/Raredon_Lab_Administration/Lab Members/Satoshi/EVOS images_101323/BASC isolation#1_P0(P1)_SOX9m+Matrigel/101323_BASC isolation #1_P0(P1)_SOX9m+Matrigel_ABCA3.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d3.TIF"),
+                                    channel.names = c('Abca3','DAPI','Vim','Sox9'))
+
+display(images.raw$DAPI)
+
+# Normalize each channel
+images.norm <- NormalizeImages(images.raw)
+display(images.norm$DAPI)
+
+# PreProcess image channels
+images.processed <- PreProcessImage(images.norm = images.norm,
+                                    box.dim = 1000,
+                                    offset = 0.01)
+display(images.processed$DAPI)
+display(images.processed$Sox9)
+display(images.processed$Abca3)
+display(images.processed$Vim)
+
+# Melt into dataframe
+image.object <- MeltIntoDataframe(images.processed)
+
+# Define number of pixels within each chunk
+num.pixels.per.chunk = 500000 # experiment with chunk size to yield a good number of samples
+num.pix <- nrow(image.object) # total number of pixels
+n.chunks <- floor(num.pix/num.pixels.per.chunk)
+message(paste(num.pixels.per.chunk,'pixels per chunk will yield',n.chunks,'total chunks'))
+chunked.data <- ChunkIt(image.object = image.object,
+                        n.chunks = n.chunks)
+
+# Build the entire dataset needed for plotting
+output.data <- data.frame('BASC-like Epithelium' = QuantifyOneLabel(chunked.data,
+                                                                    label.name = 'BASC-like Epithelium',
+                                                                    base.criteria.positive = c('DAPI'),
+                                                                    label.criteria.positive = c('Sox9','Abca3'),
+                                                                    label.criteria.negative = c('Vim')),
+                          'Tuft-like Epithelium' = QuantifyOneLabel(chunked.data,
+                                                                    label.name = 'Tuft-like Epithelium',
+                                                                    base.criteria.positive = c('DAPI'),
+                                                                    label.criteria.positive = c('Sox9'),
+                                                                    label.criteria.negative = c('Vim','Abca3')),
+                          'Sox9-Positive Epithelium' = QuantifyOneLabel(chunked.data,
+                                                                        label.name = 'Sox9-Positive Epithelium',
+                                                                        base.criteria.positive = c('DAPI'),
+                                                                        label.criteria.positive = c('Sox9'),
+                                                                        label.criteria.negative = c('Vim')),
+                          'Mesenchyme' = QuantifyOneLabel(chunked.data,
+                                                          label.name = 'Mesenchyme',
+                                                          base.criteria.positive = c('DAPI'),
+                                                          label.criteria.positive = c('Vim'),
+                                                          label.criteria.negative = c('Sox9','Abca3')),
+                          'Epi.Tuft-like' = QuantifyOneLabel(chunked.data,
+                                                          label.name = 'Mesenchyme',
+                                                          base.criteria.positive = c('DAPI'),
+                                                          base.criteria.negative = c('Vim'),
+                                                          label.criteria.positive = c('Sox9'),
+                                                          label.criteria.negative = c('Abca3')))# Label with condition
+output.data$Condition <- 'Matrigel+'
+
+# Stash so we don't overwrite
+data2 <- melt(output.data)
+```
+
+Ok great. Now we have all the information we want, from both conditions. But we want to compare them together in unified plots! So we need to bring these two data objects together. We can do this as follows, using the 'rbind' command ('row-bind') which concatenates data-frames in R.
+
+```{r}
+# Bind two datasets together for plotting
+data <- rbind(data1,data2)
+```
+
+Then, we are all set to begin exploring and making various plots using ggplot. These are my best efforts, but there are a lot of options and you should experiment with new and optimal ways of using ggplot to visualize these data.
+
+#### Plotting Exploration
+
+First, let's just set up a basic ggplot object that start us looking at the data
+
+```{r,warning=FALSE}
+ggplot(data=data,
+       aes(x=Condition, y=value,fill=variable,color=variable))+
+  geom_violin()
+```
+
+This is not bade! But we'd like to see all of our measurements, in addition to the distributions. So, let's add a geom_point
+
+```{r,warning=FALSE}
+ggplot(data=data,
+       aes(x=Condition, y=value,fill=variable,color=variable))+
+  geom_violin()+
+  geom_point(color='black',
+             size=0.25)
+```
+
+Ok, so it is an issue that all of our points are at a single x-coordinate in each condition. No good. So, following some Googling, we figure out that this should work:
+
+```{r}
+ggplot(data=data,
+       aes(x=Condition, y=value,fill=variable,color=variable))+
+  geom_violin()+
+  geom_point(color='black',
+             size=0.25,
+             position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25))
+```
+
+Very nice! Let's get rid of the silly looking grey background:
+
+```{r,warning=FALSE}
+ggplot(data=data,
+       aes(x=Condition, y=value,fill=variable,color=variable))+
+  geom_violin()+
+  geom_point(color='black',
+             size=0.25,
+             position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25))+
+  theme_classic()
+```
+
+I like that a lot better. Let's label the y-axis:
+
+```{r,warning=FALSE}
+ggplot(data=data,
+       aes(x=Condition, y=value,fill=variable,color=variable))+
+  geom_violin()+
+  geom_point(color='black',
+             size=0.25,
+             position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25))+
+  theme_classic()+
+  ylab('Fraction of DAPI Pixels')
+```
+
+And add a title:
+
+```{r,warning=FALSE}
+ggplot(data=data,
+       aes(x=Condition, y=value,fill=variable,color=variable))+
+  geom_violin()+
+  geom_point(color='black',
+             size=0.25,
+             position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25))+
+  theme_classic()+
+  ylab('Fraction of DAPI Pixels')+
+  ggtitle('Effect of Matrigel on Epithelial Stemness in 2D Culture')
+```
+
+And update the legend title:
+
+```{r,warning=FALSE}
+ggplot(data=data,
+       aes(x=Condition, y=value,fill=variable,color=variable))+
+  geom_violin()+
+  geom_point(color='black',
+             size=0.25,
+             position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25))+
+  theme_classic()+
+  ylab('Fraction of DAPI Pixels')+
+  ggtitle('Effect of Matrigel on Epithelial Stemness in 2D Culture')+
+  guides(fill=guide_legend(title="Expression Signature"),
+         color=guide_legend(title="Expression Signature")) # We need to do this twice, because I have told it to use both the 'color' (the violin outline) and 'fill' (the violin fill) attributes
+
+```
+
+Finally, let's update the colors, so that we can use this plot for publication (ggplot default colors should not be used for publication, almost ever, unless that is specifically a stated goal for some reason, like emphasizing that we are deliberately using a default output or classification without modification. Not applicable here, so let's put in some fancy colors to make us look good).
+
+```{r}
+ggplot(data=data,
+       aes(x=Condition, y=value,fill=variable,color=variable))+
+  geom_violin()+
+  geom_point(color='black',
+             size=0.25,
+             position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25))+
+  theme_classic()+
+  ylab('Fraction of DAPI Pixels')+
+  ggtitle('Effect of Matrigel on Epithelial Stemness in 2D Culture')+
+  guides(fill=guide_legend(title="Expression Signature"),
+         color=guide_legend(title="Expression Signature"))+
+  scale_fill_manual(values = c('#93B7BE','#F19A3E','#3D3B8E','#E072A4','red'))+
+  scale_color_manual(values = c('#93B7BE','#F19A3E','#3D3B8E','#E072A4','red')) # Again, need to modify BOTH the color and fill arguments, if we want this to look clean
+
+```
+
+Great. Very happy with this. We can now save this plot to our hardrive, if we want, as follows (this does a PNG file, which I like because it is a raster image that can be made very high-resoltion, but is still displayed easily by most programs. PDF also works, but generates very large files sometimes that some programs struggle to render. Publication-quality figures must ALWAYS be made with a resolution of at least 300 dots-per-inch (dpi) which is covered here by the combination of units being 'in' (inches) and res ('resolution') being '300'. The width and height should be manipulated to yield the desired aspect ratio and font sizing. (Font sizing can also be modified directly, within ggplot, but I am not demonstrating that here.)
+
+```{r}
+png('Test.Output.Demo.png',width = 7,height = 5,units='in',res=300)
+ggplot(data = data,
+       aes(x = Condition,y=value,fill=variable,color=variable))+
+  geom_violin()+
+  geom_point(position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25),size=0.1,color='black')+
+  theme_classic()+
+  ggtitle('Effect of Matrigel on Epithelial Stemness in 2D Culture')+
+  ylab('Fraction of DAPI+ Pixels')+
+  scale_fill_manual(values = c('#93B7BE','#F19A3E','#3D3B8E','#E072A4','red'))+
+  scale_color_manual(values = c('#93B7BE','#F19A3E','#3D3B8E','#E072A4','red'))
+dev.off()
+```
+
+Finally, note that the organization that I am showing here is by no means mandatory. Maybe we think the graph would be clearer if we group the colors tgoether so that we can compare the distribution of each metric between conditions, quickly. You can change the way ggplot is running to achieve this. Here, I switch the order around, change the color scheme, add an x-axis global label, and rotate the x-axis category labels to try to make a nice looking plot:
+
+```{r}
+ggplot(data = data,
+       aes(x = variable,y=value,fill=Condition,color=Condition))+
+  geom_violin()+
+  geom_point(position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25),size=0.1,color='black')+
+  theme_classic()+
+  ggtitle('Effect of Matrigel on Epithelial Stemness in 2D Culture')+
+  ylab('Fraction of DAPI+ Pixels')+
+  xlab('Expression Signature')+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+
+  scale_fill_manual(values = c('blue3','red3'))+
+  scale_color_manual(values = c('blue3','red3'))
+```
+
+Looks good! Then we can save to hardrive if we want to:
+
+```{r}
+png('Test.Output.Demo.Reorganized.png',width = 7,height = 5,units='in',res=300)
+ggplot(data = data,
+       aes(x = variable,y=value,fill=Condition,color=Condition))+
+  geom_violin()+
+  geom_point(position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25),size=0.1,color='black')+
+  theme_classic()+
+  ggtitle('Effect of Matrigel on Epithelial Stemness in 2D Culture')+
+  ylab('Fraction of DAPI+ Pixels')+
+  xlab('Expression Signature')+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+
+  scale_fill_manual(values = c('blue3','red3'))+
+  scale_color_manual(values = c('blue3','red3'))
+dev.off()
+```
+
+Let me know if questions! Feel free to modify this markdown document, borrow and evolve code, etc to suit your purposes.
+
+We also may want to modify the code evenutally to operate on a cell-level (i.e., leveraging image parcellation into 'cells' in the initial steps,) rather than using pixels, but I'm not sure how to do this yet. Does anyone have ideas?
+
+
