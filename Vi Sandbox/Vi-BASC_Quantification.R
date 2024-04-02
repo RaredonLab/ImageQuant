@@ -29,11 +29,14 @@ source("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/R Functions/QuantifyOneL
                                         "~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/Vi Sandbox/Cytospin Images/BSL.BDL3/BSL.BDL3.Pre.Cytospin/SOX9_BSL.BDL_Cytospin_032224_BASC#5 pre_HOP.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d3.TIF"
                                         ),
                                                       
-                                      channel.names = 
-                                        c('DAPI','HOP','Vim','Sox9')
-                                    )
+                                    channel.names = 
+                                      c('DAPI','HOP','Vim','Sox9')
+    )
     
-    display(images.raw$DAPI)
+    # display(images.raw$DAPI)
+    # display(images.raw$HOP)
+    # display(images.raw$Vim)
+    # display(images.raw$Sox9)
     
     # Normalize each channel
     images.norm <- NormalizeImages(images.raw)
@@ -90,7 +93,6 @@ source("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/R Functions/QuantifyOneL
                                                             # label.criteria.negative = c('HOP'))
                               )
     )
-    
     
     
     # Label with condition
