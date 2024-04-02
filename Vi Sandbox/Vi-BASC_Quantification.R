@@ -24,9 +24,9 @@ source("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/R Functions/QuantifyOneL
     # LOAD SINGLE CHANNEL IMAGES
     images.raw <- LoadImageChannels(channel.filepaths = 
                                       c("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/Vi Sandbox/Cytospin Images/BSL.BDL3/BSL.BDL3.Pre.Cytospin/DAPI_BSL.BDL_Cytospin_032224_BASC#5 pre_HOP.488_Vimentin.555_SOX9.647_Bottom Slide_TD_p00_0_A01f00d1.TIF",
-              #missing rn               "~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/Vi Sandbox/Cytospin Images/BSL.BDL3/BSL.BDL3.Pre.Cytospin/[].TIF",
+                                        "~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/Vi Sandbox/Cytospin Images/BSL.BDL3/BSL.BDL3.Pre.Cytospin/HOP_BSL.BDL_Cytospin_032224_BASC#5 pre_HOP.488_Vimentin.555_SOX9.647_Bottom Slide_TD_p00_0_A01f00d3.TIF",
                                         "~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/Vi Sandbox/Cytospin Images/BSL.BDL3/BSL.BDL3.Pre.Cytospin/VIM_BSL.BDL_Cytospin_032224_BASC#5 pre_HOP.488_Vimentin.555_SOX9.647_Bottom Slide_TD_p00_0_A01f00d2.TIF",
-              #missing rn               "~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/Vi Sandbox/Cytospin Images/BSL.BDL3/BSL.BDL3.Pre.Cytospin/[].TIF"
+                                        "~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/Vi Sandbox/Cytospin Images/BSL.BDL3/BSL.BDL3.Pre.Cytospin/SOX9_BSL.BDL_Cytospin_032224_BASC#5 pre_HOP.488_Vimentin.555_SOX9.647_Bottom Slide_TR_p00_0_A01f00d3.TIF"
                                         ),
                                                       
                                       channel.names = 
@@ -37,18 +37,18 @@ source("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/R Functions/QuantifyOneL
     
     # Normalize each channel
     images.norm <- NormalizeImages(images.raw)
-      # display(images.norm$DAPI)
-      # display(images.norm$Sox9)
+    # display(images.norm$DAPI)
+    # display(images.norm$Sox9)
     
     # PreProcess image channels
     images.processed <- PreProcessImage(images.norm = images.norm,
-                                          box.dim = 1000,
-                                          offset = 0.01) # These parameters will make a huge difference in your outputs and should be tuned + checked
+                                        box.dim = 1000,
+                                        offset = 0.01) # These parameters will make a huge difference in your outputs and should be tuned + checked
     
-      # display(images.processed$DAPI)
-      # display(images.processed$HOP)
-      # display(images.processed$Vim)
-      # display(images.processed$Sox9)
+    # display(images.processed$DAPI)
+    # display(images.processed$HOP)
+    # display(images.processed$Vim)
+    # display(images.processed$Sox9)
     
     # Melt into dataframe
     image.object <- MeltIntoDataframe(images.processed)
@@ -64,39 +64,40 @@ source("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/R Functions/QuantifyOneL
     
     # Build the entire dataset needed for plotting
     output.data <- data.frame('ATI-like Transitional' = QuantifyOneLabel(chunked.data,
-                                                          label.name = 'ATI-like Transitional',
-                                                          base.criteria.positive = c('DAPI'),
-                                                          label.criteria.positive = c('Sox9','HOP'),
-                                                          label.criteria.negative = c('Vim')),
+                                                                         label.name = 'ATI-like Transitional',
+                                                                         base.criteria.positive = c('DAPI'),
+                                                                         label.criteria.positive = c('Sox9','HOP'),
+                                                                         label.criteria.negative = c('Vim')),
                               'ATI-like End Stage' = QuantifyOneLabel(chunked.data,
-                                                          label.name = 'ATI-like End Stage',
-                                                          base.criteria.positive = c('DAPI'),
-                                                          label.criteria.positive = c('HOP'),
-                                                          label.criteria.negative = c('Vim','Sox9')),
+                                                                      label.name = 'ATI-like End Stage',
+                                                                      base.criteria.positive = c('DAPI'),
+                                                                      label.criteria.positive = c('HOP'),
+                                                                      label.criteria.negative = c('Vim','Sox9')),
                               'Sox9-Positive Only' = QuantifyOneLabel(chunked.data,
-                                                          label.name = 'Sox9-Positive Only',
-                                                          base.criteria.positive = c('DAPI'),
-                                                          label.criteria.positive = c('Sox9'),
-                                                          label.criteria.negative = c('Vim','HOP')),
+                                                                      label.name = 'Sox9-Positive Only',
+                                                                      base.criteria.positive = c('DAPI'),
+                                                                      label.criteria.positive = c('Sox9'),
+                                                                      label.criteria.negative = c('Vim','HOP')),
                               'Mesenchyme' = QuantifyOneLabel(chunked.data,
-                                                          label.name = 'Mesenchyme',
-                                                          base.criteria.positive = c('DAPI'),
-                                                          label.criteria.positive = c('Vim'),
-                                                          label.criteria.negative = c('Sox9','HOP')),
+                                                              label.name = 'Mesenchyme',
+                                                              base.criteria.positive = c('DAPI'),
+                                                              label.criteria.positive = c('Vim'),
+                                                              label.criteria.negative = c('Sox9','HOP')),
                               'EMT-like' = QuantifyOneLabel(chunked.data,
-                                                          label.name = 'EMT-like',
-                                                          base.criteria.positive = c('DAPI'),
-                                                          label.criteria.positive = c('Sox9','Vim'),
-                                                         #label.criteria.negative = c('HOP'))
-                                                         )
+                                                            label.name = 'EMT-like',
+                                                            base.criteria.positive = c('DAPI'),
+                                                            label.criteria.positive = c('Sox9','Vim'),
+                                                            # label.criteria.negative = c('HOP'))
                               )
-                              
-                                                         
+    )
+    
+    
+    
     # Label with condition
-    output.data$PreSeeding1 #*************UPDATE NUMBER*************
+    output.data$Condition <- 'Pre-Seeding 3' #*************UPDATE NUMBER*************
     
     # Stash so we don't overwrite
-    PreSeed1Data <- melt(output.data) #*************UPDATE NUMBER*************
+    PreSeed3Data <- melt(output.data) #*************UPDATE NUMBER*************
 
 
 
@@ -179,7 +180,7 @@ source("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/R Functions/QuantifyOneL
     
     
     # Label with condition
-    output.data$BSL3 #*************UPDATE NUMBER*************
+    output.data$Condition <- 'BSL3' #*************UPDATE NUMBER*************
     
     # Stash so we don't overwrite
     BSL3Data <- melt(output.data) #*************UPDATE NUMBER*************
@@ -261,7 +262,7 @@ source("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/R Functions/QuantifyOneL
   
   
   # Label with condition
-  output.data$BDL3 #*************UPDATE NUMBER*************
+  output.data$Condition <- 'BDL3' #*************UPDATE NUMBER*************
   
   # Stash so we don't overwrite
   BDL3Data <- melt(output.data) #*************UPDATE NUMBER*************
@@ -274,7 +275,7 @@ source("~/project/BSL.BDL3.CytospinQuant/ImageQuant.git/R Functions/QuantifyOneL
 #********* Plotting Exploration ********#
 
 # Bind two datasets together for plotting
-data <- rbind(data1,data2)
+data <- rbind(BSL3Data,BDL3Data)
 
 png('Test.Output.png',width = 7,height = 5,units='in',res=300)
 ggplot(data=data,
@@ -293,8 +294,8 @@ ggplot(data = data,
   geom_violin()+
   geom_point(position = position_jitterdodge(dodge.width = 0.9,jitter.width=0.25),size=0.1,color='black')+
   theme_classic()+
-  ggtitle('Effect of Matrigel on Epithelial Stemness in 2D Culture')+
+  ggtitle('Effect of Dynamic Ventilation on BASC Character in 3D')+
   ylab('Fraction of DAPI+ Pixels')+
-  scale_fill_manual(values = c('#93B7BE','#F19A3E','#3D3B8E','#E072A4'))+
-  scale_color_manual(values = c('#93B7BE','#F19A3E','#3D3B8E','#E072A4'))
+  scale_fill_manual(values = c('#93B7BE','#F19A3E','#3D3B8E','#E072A4','lightgreen'))+
+  scale_color_manual(values = c('#93B7BE','#F19A3E','#3D3B8E','#E072A4','lightgreen'))
 dev.off()
