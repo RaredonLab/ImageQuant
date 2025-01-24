@@ -2,6 +2,8 @@
   setwd("~/project/CytospinQuant/ImageQuant.git/Vi Sandbox/EBImage Method")
 
 # PACKAGES
+  install.packages("BiocManager")
+  BiocManager::install("EBImage")
   library(EBImage)
 
 #LOAD IMAGE(S)
